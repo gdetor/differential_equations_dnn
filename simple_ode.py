@@ -69,45 +69,6 @@ def minimize_loss_dgm(net,
     return net, train_loss
 
 
-def trial_loss_func(net, x, A):
-    y = A + x * net(x)
-
-    dy = torch.autograd.grad(y,
-                             x,
-                             grad_outputs=torch.ones_like(y),
-                             create_graph=True,
-                             retain_graph=True)[0]
-
-    L = torch.sum((dy + y)**2)
-    return L
-
-
-@fn_timer
-def minimize_loss_trial(net,
-                        y_ic=2.0,
-                        iterations=1000,
-                        batch_size=32,
-                        lrate=1e-4,
-                        ):
-    optimizer = torch.optim.Adam(net.parameters(), lr=lrate)
-
-    t = torch.linspace(0, 1, steps=batch_size).reshape(-1, 1)
-    t.requires_grad = True
-    t = t.to(device)
-
-    train_loss = []
-    for i in range(iterations):
-        optimizer.zero_grad()
-        loss = trial_loss_func(net, t, y_ic)
-        loss.backward()
-        optimizer.step()
-        train_loss.append(loss.item())
-        if i % 100 == 0:
-            lr = optimizer.param_groups[0]['lr']
-            print(f"Iteration: {i}, Loss: {loss.item()}, LR: {lr}")
-    return net, train_loss
-
-
 def gridEvaluation(net, nodes=10, y_ic=2.0, method="dgm"):
     t_grid = np.linspace(0, 1.0, nodes)
     sol = np.zeros((nodes,))
@@ -137,28 +98,17 @@ if __name__ == "__main__":
                                        )
     y_dgm = gridEvaluation(nnet, nodes=N)
 
-    # Approximate solution using the Trial method
-    nnet, loss_trial = minimize_loss_trial(net,
-                                           y_ic=2.0,
-                                           iterations=iters,
-                                           batch_size=64,
-                                           lrate=1e-4,
-                                           )
-    y_trial = gridEvaluation(nnet, method="trial", nodes=N)
-
     # Exact solution
     t = np.linspace(0, 1.0, N)
     y_exact = exact_solution(t)
 
     # MAE
     mae_dgm = mean_absolute_error(y_exact, y_dgm)
-    mae_trial = mean_absolute_error(y_exact, y_trial)
 
     fig = plt.figure(figsize=(17, 5))
     ax1 = fig.add_subplot(121)
     ax1.plot(t, y_exact, label="Exact solution")
     ax1.plot(t, y_dgm, 'x', label="DGM NN solution", ms=15)
-    ax1.plot(t, y_trial, 'o', label="Trial NN solution", ms=10)
     ax1.set_ylim([0, 2.5])
     ax1.set_xticks([0, 0.5, 1.0])
     ax1.set_xticklabels(['0', '0.5', '1.0'], fontsize=14, weight='bold')
@@ -175,12 +125,10 @@ if __name__ == "__main__":
 
     ax2 = fig.add_subplot(122)
     ax2.plot(loss_dgm[3:], label="DGM loss")
-    ax2.plot(loss_trial[3:], label="Trial loss")
     ax2.set_ylim([0, 10])
     ax2.legend(fontsize=12)
-    ax2.set_xticks([0 + i for i in range(iters, 500)])
-    ticks = ax2.get_xticks()
-    ax2.set_xticklabels(ticks, fontsize=14, weight='bold')
+    ax2.set_xticks([0, 2500, 5000])
+    ax2.set_xticklabels(['0', '2500', '5000'], fontsize=14, weight='bold')
     ticks = np.round(ax2.get_yticks(), 2)
     ax2.set_yticks(ticks)
     ax2.set_yticklabels(ticks, fontsize=14, weight='bold')
@@ -191,8 +139,9 @@ if __name__ == "__main__":
              fontsize=18,
              weight='bold')
 
-    ax2.text(2500, 8, "DGM MAE: "+str(np.round(mae_dgm, 4)), fontsize=11)
-    ax2.text(2500, 8.5, "Trial MAE: "+str(np.round(mae_trial, 4)), fontsize=11)
+    ax2.text(2500, 8, "DGM MAE: "+str(np.round(mae_dgm, 4)),
+             fontsize=13,
+             weight='bold')
 
     plt.savefig("figs/simple_ode_solution.pdf")
     plt.show()

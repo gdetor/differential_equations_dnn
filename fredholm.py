@@ -90,13 +90,17 @@ if __name__ == "__main__":
     net = DGM(input_dim=1, output_dim=1, hidden_size=32).to(device)
 
     # Approximate solution using DGM
-    nnet, loss_dgm = minimize_loss_dgm(net,
-                                       y_ic=2.0,
-                                       iterations=iters,
-                                       batch_size=32,
-                                       lrate=1e-4,
-                                       )
-    y_dgm = gridEvaluation(nnet, nodes=N)
+    # nnet, loss_dgm = minimize_loss_dgm(net,
+    #                                    y_ic=2.0,
+    #                                    iterations=iters,
+    #                                    batch_size=32,
+    #                                    lrate=1e-4,
+    #                                    )
+    # y_dgm = gridEvaluation(nnet, nodes=N)
+    # np.save("./temp_results/fredholm_approx", y_dgm)
+    # np.save("./temp_results/fredholm_loss", loss_dgm)
+    y_dgm = np.load("./temp_results/fredholm_approx.npy")
+    loss_dgm = np.load("./temp_results/fredholm_loss.npy")
 
     # Exact solution
     t = np.linspace(0, np.pi/2, N)
@@ -131,10 +135,9 @@ if __name__ == "__main__":
     ax2 = fig.add_subplot(122)
     ax2.plot(loss_dgm, label="DGM loss")
     ax2.legend(fontsize=12)
-    ax2.set_ylim([0, 0.5])
-    ax2.set_xticks([0 + i for i in range(iters, 500)])
-    ticks = ax2.get_xticks()
-    ax2.set_xticklabels(ticks, fontsize=14, weight='bold')
+    ax2.set_ylim([-0.1, 0.5])
+    ax2.set_xticks([0, 1500, 3000])
+    ax2.set_xticklabels(['0', '1500', '3000'], fontsize=14, weight='bold')
     ticks = np.round(ax2.get_yticks(), 2)
     ax2.set_yticks(ticks)
     ax2.set_yticklabels(ticks, fontsize=14, weight='bold')

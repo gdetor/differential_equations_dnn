@@ -17,7 +17,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def exact_solution(k=1, nodes=10):
     sol = np.zeros((nodes, nodes))
-    t_grid = np.linspace(0, np.pi, nodes)
+    # t_grid = np.linspace(0, np.pi, nodes)
+    t_grid = np.linspace(0, 3, nodes)
     x_grid = np.linspace(0, np.pi, nodes)
     for i, t in enumerate(t_grid):
         for j, x in enumerate(x_grid):
@@ -97,7 +98,7 @@ def minimize_loss_dgm(net,
 
 
 def gridEvaluation(net, nodes=10):
-    t_grid = np.linspace(0, np.pi, nodes)
+    t_grid = np.linspace(0, 3.0, nodes)
     x_grid = np.linspace(0, np.pi, nodes)
     sol = np.zeros((nodes, nodes))
     for i, t in enumerate(t_grid):
@@ -120,66 +121,72 @@ if __name__ == "__main__":
               num_layers=3).to(device)
 
     # Approximate solution using DGM
-    nnet, loss_dgm = minimize_loss_dgm(net,
-                                       iterations=iters,
-                                       batch_size=64,
-                                       lrate=1e-4,
-                                       )
-    y_dgm = gridEvaluation(nnet, nodes=N)
+    # nnet, loss_dgm = minimize_loss_dgm(net,
+    #                                    iterations=iters,
+    #                                    batch_size=64,
+    #                                    lrate=1e-4,
+    #                                    )
+    # y_dgm = gridEvaluation(nnet, nodes=N)
+    # np.save("temp_results/heat_sol_1d_dgm", y_dgm)
+    # np.save("temp_results/heat_sol_1d_dgm_loss", np.array(loss_dgm))
+    y_dgm = np.load("temp_results/heat_sol_1d_dgm.npy")
+    loss_dgm = np.load("temp_results/heat_sol_1d_dgm_loss.npy")
+    y_exact = np.load("./temp_results/heat_sol_exact_1d.npy")
 
     # Exact solution
-    y_exact = exact_solution(k=1, nodes=N)
+    # y_exact = exact_solution(k=1, nodes=N)
+    # np.save("temp_results/heat_sol_exact_1d", y_exact)
 
-    fig = plt.figure(figsize=(12, 4))
-    ax = fig.add_subplot(121)
-    im = ax.imshow(y_exact, origin='lower')
+    mae_dgm = mean_absolute_error(y_exact, y_dgm)
+
+    fig = plt.figure(figsize=(20, 5))
+    fig.subplots_adjust(bottom=0.11)
+    ax = fig.add_subplot(131)
+    im = ax.imshow(y_exact, origin='lower', vmin=0.0, vmax=1.0)
     plt.colorbar(im)
+    ax.set_xticks([0, 20, 39])
+    ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
+                       fontsize=14, weight='bold')
+    ax.set_yticks([0, 20, 39])
+    ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
     ax.title.set_text('Exact solution')
+    ax.set_ylabel("Time", fontsize=16, weight='bold')
+    ax.set_xlabel("Space", fontsize=16, weight='bold')
+    ax.text(0, 40, 'A',
+            ha='left',
+            fontsize=18,
+            weight='bold')
 
-    ax = fig.add_subplot(122)
-    im = ax.imshow(y_dgm, origin="lower")
+    ax = fig.add_subplot(132)
+    im = ax.imshow(y_dgm, origin="lower", vmin=0.0, vmax=1.0)
     plt.colorbar(im)
+    ax.set_yticks([0, 20, 39])
+    ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
+    ax.set_xticks([0, 20, 39])
+    ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
+                       fontsize=14, weight='bold')
+    ax.set_xlabel("Space", fontsize=16, weight='bold')
     ax.title.set_text('Approximated solution (DNN)')
+    ax.text(0, 40, 'B',
+            ha='left',
+            fontsize=18,
+            weight='bold')
 
-    # MAE
-    # mae_dgm = mean_absolute_error(y_exact, y_dgm)
+    ax = fig.add_subplot(133)
+    ax.plot(np.array(loss_dgm), lw=2.0)
+    ax.set_xlabel("Iterations", fontsize=16, weight='bold')
+    ax.set_ylabel("Loss", fontsize=16, weight='bold')
+    ax.set_xticks([0, int(iters//2), iters])
+    ax.set_xticklabels(['0', '7500', '15000'], fontsize=14, weight='bold')
+    ticks = np.round(ax.get_yticks(), 2)
+    ax.set_yticklabels(ticks, fontsize=14, weight='bold')
+    ax.text(0, 4.3, 'C',
+            ha='left',
+            fontsize=18,
+            weight='bold')
+    ax.text(9000, 2.5, "DGM MAE: "+str(np.round(mae_dgm, 4)),
+            fontsize=13,
+            weight='bold')
 
-    # fig = plt.figure(figsize=(17, 5))
-    # ax1 = fig.add_subplot(121)
-    # ax1.plot(t, y_exact, label="Exact solution")
-    # ax1.plot(t, y_dgm, 'x', label="DGM NN solution", ms=15)
-    # ax1.set_ylim([0, 2.5])
-    # ax1.set_xticks([0, 0.5, 1.0])
-    # ax1.set_xticklabels(['0', '0.5', '1.0'], fontsize=14, weight='bold')
-    # ticks = np.round(ax1.get_yticks(), 2)
-    # ax1.set_yticks(ticks)
-    # ax1.set_yticklabels(ticks, fontsize=14, weight='bold')
-    # ax1.legend(fontsize=12)
-    # ax1.set_xlabel(r"Time (t)", fontsize=14, weight='bold')
-    # ax1.set_ylabel(r"y(t)", fontsize=14, weight='bold')
-    # ax1.text(0, 2.7, 'A',
-    #          va='top',
-    #          fontsize=18,
-    #          weight='bold')
-
-    # ax2 = fig.add_subplot(122)
-    # ax2.plot(loss_dgm[3:], label="DGM loss")
-    # ax2.set_ylim([0, 10])
-    # ax2.legend(fontsize=12)
-    # ax2.set_xticks([0 + i for i in range(iters, 500)])
-    # ticks = ax2.get_xticks()
-    # ax2.set_xticklabels(ticks, fontsize=14, weight='bold')
-    # ticks = np.round(ax2.get_yticks(), 2)
-    # ax2.set_yticks(ticks)
-    # ax2.set_yticklabels(ticks, fontsize=14, weight='bold')
-    # ax2.set_xlabel("Iterations", fontsize=14, weight='bold')
-    # ax2.set_ylabel("Loss", fontsize=14, weight='bold')
-    # ax2.text(0, 10.8, 'B',
-    #          va='top',
-    #          fontsize=18,
-    #          weight='bold')
-
-    # ax2.text(2500, 8, "DGM MAE: "+str(np.round(mae_dgm, 4)), fontsize=11)
-
-    plt.savefig("figs/simple_ode_solution.pdf")
+    plt.savefig("figs/heat_1dim_solution.pdf")
     plt.show()
