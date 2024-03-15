@@ -1,3 +1,21 @@
+# This script shows how one can use the Deep Galerkin method to solve a
+# one-dimensional heat equation (PDE) using deep neural networks.
+# Copyright (C) 2024  Georgios Is. Detorakis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import argparse
+
 import numpy as np
 import matplotlib.pylab as plt
 import matplotlib.style as style
@@ -16,6 +34,9 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def exact_solution(k=1, nodes=10):
+    """!
+    Exact solution of the heat equation (see main text).
+    """
     sol = np.zeros((nodes, nodes))
     # t_grid = np.linspace(0, np.pi, nodes)
     t_grid = np.linspace(0, 3, nodes)
@@ -27,6 +48,25 @@ def exact_solution(k=1, nodes=10):
 
 
 def dgm_loss_func(net, x, x0, xbd1, xbd2, x_bd1, x_bd2):
+    """! This is the right-hand side of the heat equation plus the initial and
+    the boundary conditions.
+    There are no boundary conditions thus we omit that term
+    in the loss function. This function relies on the autograd to estimate the
+    derivatives of the differential equation.
+
+    @param net A Pytorch neural network object that approximates the solution
+    of the heat equation.
+    @param y The approximated solution of the differential equation by the
+    neural network (torch tensor).
+    @param x The independet (covariates) variables (spatial and temporal).
+    @param x0 The initial values of the independent variables (torch tensor).
+    @param xbd1 Left boundary condition (nodes).
+    @param xbd2 Right boundary condition (nodes).
+    @param xbd_1 Actual left boundary condition value.
+    @param xbd_2 Actual right boundary condition value.
+
+    @return The loss of the Deep Galerkin method for the differential equation.
+    """
     kappa = 1.0
     u = net(x)
 
@@ -61,6 +101,17 @@ def minimize_loss_dgm(net,
                       batch_size=32,
                       lrate=1e-4,
                       ):
+    """! Main loss minimization function. This function implements the Deep
+    Galerkin Method.
+
+    @param net A torch neural network that will approximate the solution of
+    neural fields.
+    @param iterations Number of learning iterations (int).
+    @param batch_size The size of the minibatch (int).
+    @param lrate The learning rate (float) used in the optimization.
+
+    @return A torch neural network (trained), and the training loss (list)
+    """
     optimizer = torch.optim.Adam(net.parameters(), lr=lrate)
 
     t0 = torch.zeros([batch_size, 1], device=device)
@@ -98,6 +149,15 @@ def minimize_loss_dgm(net,
 
 
 def gridEvaluation(net, nodes=10):
+    """! Evaluates a torch neural network on a rectangular grid (t, x).)
+
+    @param net A torch neural network object.
+    @param nodes Number of spatial discretization nodes for the interval
+    [0, 3] x [0, pi].
+
+    @return A Python list that contains solution evaluated on the nodes of a
+    rectangular grid (t, x).
+    """
     t_grid = np.linspace(0, 3.0, nodes)
     x_grid = np.linspace(0, np.pi, nodes)
     sol = np.zeros((nodes, nodes))
@@ -112,81 +172,99 @@ def gridEvaluation(net, nodes=10):
 
 
 if __name__ == "__main__":
-    N = 40
-    iters = 15000
+    N = 40      # Number of discretization nodes
+    iters = 15000   # Number of learning iterations
+
     # Define the neural network
     net = MLP(input_dim=2,
               output_dim=1,
               hidden_size=128,
               num_layers=3).to(device)
 
-    # Approximate solution using DGM
-    # nnet, loss_dgm = minimize_loss_dgm(net,
-    #                                    iterations=iters,
-    #                                    batch_size=64,
-    #                                    lrate=1e-4,
-    #                                    )
-    # y_dgm = gridEvaluation(nnet, nodes=N)
-    # np.save("temp_results/heat_sol_1d_dgm", y_dgm)
-    # np.save("temp_results/heat_sol_1d_dgm_loss", np.array(loss_dgm))
-    y_dgm = np.load("temp_results/heat_sol_1d_dgm.npy")
-    loss_dgm = np.load("temp_results/heat_sol_1d_dgm_loss.npy")
-    y_exact = np.load("./temp_results/heat_sol_exact_1d.npy")
+    parser = argparse.ArgumentParser(
+                    prog="NeuralFieldsDNNSolver",
+                    description="DNN solver for linear first order ODE",
+                    epilog="-")
 
-    # Exact solution
-    # y_exact = exact_solution(k=1, nodes=N)
-    # np.save("temp_results/heat_sol_exact_1d", y_exact)
+    parser.add_argument('--solve',
+                        action="store_true",)
+    parser.add_argument('--plot',
+                        action="store_true")
+    parser.add_argument('--savefig',
+                        action="store_true")
+    args = parser.parse_args()
 
-    mae_dgm = mean_absolute_error(y_exact, y_dgm)
+    if args.solve:
+        # Approximate solution using DGM
+        nnet, loss_dgm = minimize_loss_dgm(net,
+                                           iterations=iters,
+                                           batch_size=64,
+                                           lrate=1e-4,
+                                           )
+        y_dgm = gridEvaluation(nnet, nodes=N)
+        np.save("temp_results/heat_sol_1d_dgm", y_dgm)
+        np.save("temp_results/heat_sol_1d_dgm_loss", np.array(loss_dgm))
 
-    fig = plt.figure(figsize=(20, 5))
-    fig.subplots_adjust(bottom=0.11)
-    ax = fig.add_subplot(131)
-    im = ax.imshow(y_exact, origin='lower', vmin=0.0, vmax=1.0)
-    plt.colorbar(im)
-    ax.set_xticks([0, 20, 39])
-    ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
-                       fontsize=14, weight='bold')
-    ax.set_yticks([0, 20, 39])
-    ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
-    ax.title.set_text('Exact solution')
-    ax.set_ylabel("Time", fontsize=16, weight='bold')
-    ax.set_xlabel("Space", fontsize=16, weight='bold')
-    ax.text(0, 40, 'A',
-            ha='left',
-            fontsize=18,
-            weight='bold')
+        # Exact solution
+        y_exact = exact_solution(k=1, nodes=N)
+        np.save("temp_results/heat_sol_exact_1d", y_exact)
 
-    ax = fig.add_subplot(132)
-    im = ax.imshow(y_dgm, origin="lower", vmin=0.0, vmax=1.0)
-    plt.colorbar(im)
-    ax.set_yticks([0, 20, 39])
-    ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
-    ax.set_xticks([0, 20, 39])
-    ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
-                       fontsize=14, weight='bold')
-    ax.set_xlabel("Space", fontsize=16, weight='bold')
-    ax.title.set_text('Approximated solution (DNN)')
-    ax.text(0, 40, 'B',
-            ha='left',
-            fontsize=18,
-            weight='bold')
+    if args.plot:
+        y_dgm = np.load("temp_results/heat_sol_1d_dgm.npy")
+        loss_dgm = np.load("temp_results/heat_sol_1d_dgm_loss.npy")
+        y_exact = np.load("./temp_results/heat_sol_exact_1d.npy")
 
-    ax = fig.add_subplot(133)
-    ax.plot(np.array(loss_dgm), lw=2.0)
-    ax.set_xlabel("Iterations", fontsize=16, weight='bold')
-    ax.set_ylabel("Loss", fontsize=16, weight='bold')
-    ax.set_xticks([0, int(iters//2), iters])
-    ax.set_xticklabels(['0', '7500', '15000'], fontsize=14, weight='bold')
-    ticks = np.round(ax.get_yticks(), 2)
-    ax.set_yticklabels(ticks, fontsize=14, weight='bold')
-    ax.text(0, 4.3, 'C',
-            ha='left',
-            fontsize=18,
-            weight='bold')
-    ax.text(9000, 2.5, "DGM MAE: "+str(np.round(mae_dgm, 4)),
-            fontsize=13,
-            weight='bold')
+        mae_dgm = mean_absolute_error(y_exact, y_dgm)
 
-    plt.savefig("figs/heat_1dim_solution.pdf")
+        fig = plt.figure(figsize=(20, 5))
+        fig.subplots_adjust(bottom=0.11)
+        ax = fig.add_subplot(131)
+        im = ax.imshow(y_exact, origin='lower', vmin=0.0, vmax=1.0)
+        plt.colorbar(im)
+        ax.set_xticks([0, 20, 39])
+        ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
+                           fontsize=14, weight='bold')
+        ax.set_yticks([0, 20, 39])
+        ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
+        ax.title.set_text('Exact solution')
+        ax.set_ylabel("Time", fontsize=16, weight='bold')
+        ax.set_xlabel("Space", fontsize=16, weight='bold')
+        ax.text(0, 40, 'A',
+                ha='left',
+                fontsize=18,
+                weight='bold')
+
+        ax = fig.add_subplot(132)
+        im = ax.imshow(y_dgm, origin="lower", vmin=0.0, vmax=1.0)
+        plt.colorbar(im)
+        ax.set_yticks([0, 20, 39])
+        ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
+        ax.set_xticks([0, 20, 39])
+        ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
+                           fontsize=14, weight='bold')
+        ax.set_xlabel("Space", fontsize=16, weight='bold')
+        ax.title.set_text('Approximated solution (DNN)')
+        ax.text(0, 40, 'B',
+                ha='left',
+                fontsize=18,
+                weight='bold')
+
+        ax = fig.add_subplot(133)
+        ax.plot(np.array(loss_dgm), lw=2.0)
+        ax.set_xlabel("Iterations", fontsize=16, weight='bold')
+        ax.set_ylabel("Loss", fontsize=16, weight='bold')
+        ax.set_xticks([0, int(iters//2), iters])
+        ax.set_xticklabels(['0', '7500', '15000'], fontsize=14, weight='bold')
+        ticks = np.round(ax.get_yticks(), 2)
+        ax.set_yticklabels(ticks, fontsize=14, weight='bold')
+        ax.text(0, 4.3, 'C',
+                ha='left',
+                fontsize=18,
+                weight='bold')
+        ax.text(9000, 2.5, "DGM MAE: "+str(np.round(mae_dgm, 4)),
+                fontsize=13,
+                weight='bold')
+
+        if args.savefig:
+            plt.savefig("figs/heat_1dim_solution.pdf")
     plt.show()

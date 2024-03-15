@@ -1,3 +1,19 @@
+# This script contains Pytorch neural network classes that can be used as PDE
+# and ODE solution approximators.
+# Copyright (C) 2024  Georgios Is. Detorakis
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+# more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program. If not, see <https://www.gnu.org/licenses/>.
 import numpy as np
 
 import torch
@@ -142,92 +158,10 @@ class MLP(nn.Module):
         nn.init.xavier_uniform_(self.fc_out.weight)
 
 
-class EnsembleMLP(nn.Module):
-    def __init__(self,
-                 input_dim=2,
-                 output_dim=1,
-                 hidden_size=8,
-                 n_predictors=32):
-        super().__init__()
-
-        self.mini_mlp = nn.Sequential(nn.Linear(input_dim, hidden_size),
-                                      nn.ReLU(),
-                                      nn.Linear(hidden_size, hidden_size),
-                                      nn.ReLU(),
-                                      nn.Linear(hidden_size, output_dim))
-
-        self.mlps = nn.ModuleList([self.mini_mlp
-                                   for i in range(n_predictors)])
-
-        self.mlp = nn.Sequential(nn.Linear(input_dim, hidden_size),
-                                 nn.ReLU(),
-                                 nn.Linear(hidden_size, output_dim))
-
-        self.fc_out = nn.Linear(n_predictors, n_predictors)
-
-        self.mlps.apply(self.init_weights)
-        nn.init.xavier_uniform_(self.fc_out.weight)
-
-    def forward(self, x):
-        out_g = self.mlp(x)
-
-        out = torch.cat([mlp_(x[:, i, :])
-                         for i, mlp_ in enumerate(self.mlps)], dim=1)
-        out = self.fc_out(out)
-        return out.unsqueeze(2) + out_g
-
-    def init_weights(self, layer):
-        if type(layer) == nn.Linear:
-            nn.init.xavier_uniform_(layer.weight)
-
-
-class STEFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input):
-        return (input > 0).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        # return nn.functional.hardtanh(grad_output)
-        return grad_output.clamp_(0, 1)
-
-
-class HeavisideSTE(nn.Module):
-    def __init__(self):
-        super(HeavisideSTE, self).__init__()
-
-    def forward(self, x):
-        x = STEFunction.apply(x)
-        return x
-
-
-class ReLUFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input, alpha):
-        ctx.alpha = alpha
-        ctx.save_for_backward(input)
-        return (alpha * input * (input > 0)).float()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        grad_input = grad_output.clone()
-        grad_input *= ctx.alpha
-        grad_input[input < 0] = 0.0
-        return grad_input.float(), None
-
-
-class myReLU(nn.Module):
-    def __init__(self):
-        super(myReLU, self).__init__()
-        self.alpha = nn.Parameter(torch.ones([1]))
-
-    def forward(self, x):
-        x = ReLUFunction.apply(x, self.alpha)
-        return x
-
-
 class ResidualBlock(nn.Module):
+    """!
+    Linear residual block.
+    """
     def __init__(self,
                  input_dim=2,
                  output_dim=1,
@@ -258,6 +192,9 @@ class ResidualBlock(nn.Module):
 
 
 class ResNetLayer(nn.Module):
+    """!
+    Linear ResNet layer.
+    """
     def __init__(self,
                  input_dim=2,
                  output_dim=1,
@@ -289,6 +226,9 @@ class ResNetLayer(nn.Module):
 
 
 class ResNet(nn.Module):
+    """!
+    Linear ResNet.
+    """
     def __init__(self, input_dim=2, output_dim=1, hidden_size=32):
         super().__init__()
 
@@ -310,36 +250,3 @@ class ResNet(nn.Module):
         out = self.layer2(out)
         out = self.fc_out(out)
         return out
-
-
-def cyclical_learning_rate(batch_step,
-                           step_size,
-                           base_lr=0.001,
-                           max_lr=0.006,
-                           mode='triangular',
-                           gamma=0.999995):
-    cycle = np.floor(1 + batch_step / (2. * step_size))
-    x = np.abs(batch_step / float(step_size) - 2 * cycle + 1)
-
-    lr_delta = (max_lr - base_lr) * np.maximum(0, (1 - x))
-
-    if mode == 'triangular':
-        pass
-    elif mode == 'triangular2':
-        lr_delta = lr_delta * 1 / (2. ** (cycle - 1))
-    elif mode == 'exp_range':
-        lr_delta = lr_delta * (gamma**(batch_step))
-    else:
-        raise ValueError('mode must be "triangular", "triangular2",\
-                         or "exp_range"')
-
-    lr = base_lr + lr_delta
-
-    return lr
-
-
-if __name__ == "__main__":
-    x = 2 * torch.rand(5, 1) - 1
-    print(x)
-    relu = myReLU()
-    print(relu(x))

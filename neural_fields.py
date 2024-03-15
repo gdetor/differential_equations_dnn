@@ -1,3 +1,19 @@
+# This script solves a one-dimensional neural field equation with Gaussian
+# kernel using the Deep Galerkin method and a deep MLP neural network.
+# Copyright (C) 2024  Georgios Is. Detorakis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
 
 import numpy as np
@@ -80,6 +96,24 @@ def heaviside(x):
 
 
 def dgm_loss_func(y, y0, x, x0, W, h, S, dr):
+    """! This is the right-hand side of the neural field equation plus the
+    initial conditions. There are no boundary conditions thus we omit that term
+    in the loss function. This function relies on the autograd to estimate the
+    derivatives of the differential equation.
+
+    @param y The approximated solution of the differential equation by the
+    neural network (torch tensor).
+    @param y0 The approximated solution at t = 0 (torch tensor).
+    @param x The independet (covariates) variables (spatial and temporal).
+    @param x0 The initial values of the independent variables (torch tensor).
+    @param W The connectivity matrix of the neural fields equation.
+    @param h Is the resting potential of the neural field.
+    @param S Is the external input to the neural field (torch tensor).
+    @param dr Is the spatial measure of the space Omega, where the neural
+    field's integral is computed on.
+
+    @return The loss of the Deep Galerkin method for the neural field.
+    """
     Dt = torch.autograd.grad(y,
                              x,
                              grad_outputs=torch.ones_like(y),
@@ -176,7 +210,14 @@ def minimize_loss_dgm(net,
 
 
 def gridEvaluation(net, nodes=32):
-    """! Evaluate a trained neural network (net) on a rectangular grid.
+    """! Evaluates a torch neural network on a rectangular grid (t, x).)
+
+    @param net A torch neural network object.
+    @param nodes Number of spatial discretization nodes for the interval
+    [0, 100] x [-20, 20].
+
+    @return A Python list that contains solution evaluated on the nodes of a
+    rectangular grid (t, x).
     """
     net.eval()
 
@@ -338,6 +379,5 @@ if __name__ == '__main__':
                  weight='bold')
 
         if args.savefig:
-            print("LALALA")
             plt.savefig("figs/field_solution.pdf")
     plt.show()

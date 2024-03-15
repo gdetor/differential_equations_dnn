@@ -1,3 +1,5 @@
+import argparse
+
 import numpy as np
 import matplotlib.pylab as plt
 import matplotlib.style as style
@@ -7,8 +9,6 @@ from scipy.integrate import odeint
 from sklearn.metrics import mean_absolute_error
 
 import torch
-from torch import nn
-# from torch import nn
 
 from neural_networks import DGM
 from auxiliary_funs import fn_timer
@@ -18,72 +18,10 @@ style.use('tableau-colorblind10')
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-class myReLU(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.a = nn.Parameter(torch.ones([1], requires_grad=True))
-
-    def forward(self, x):
-        return (x > 0) * (self.a * x) + (x <= 0) * 0
-
-
-class MLP(nn.Module):
+def FZNFun(s, t):
+    """!
+    FitzHugh-Nagumo system of differential equations.
     """
-    Feed-forward neural network
-    """
-    def __init__(self,
-                 input_dim=2,
-                 output_dim=1,
-                 hidden_size=50,
-                 num_layers=1,
-                 bn_elements=64):
-        super(MLP, self).__init__()
-
-        self.fc_in = nn.Linear(input_dim, hidden_size)
-        self.bn_in = nn.BatchNorm1d(32)
-
-        self.layers = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
-                                     for _ in range(num_layers)])
-
-        self.bn_h = nn.ModuleList([nn.BatchNorm1d(32)
-                                   for _ in range(num_layers)])
-        self.fc_out = nn.Linear(hidden_size, output_dim)
-
-        self.act = nn.ReLU()
-        # self.act = nn.Tanh()
-        # self.act = myReLU()
-
-        self.reset()
-
-    def forward(self, x):
-        out = self.act(self.fc_in(x))
-        out = self.bn_in(out)
-        for i, layer in enumerate(self.layers):
-            out = self.act(layer(out))
-            out = self.bn_h[i](out)
-        out = self.fc_out(out)
-        return out
-
-    def reset(self):
-        nn.init.xavier_uniform_(self.fc_in.weight,
-                                gain=nn.init.calculate_gain('relu'))
-        for layer in self.layers:
-            nn.init.xavier_uniform_(layer.weight,
-                                    gain=nn.init.calculate_gain('relu'))
-        nn.init.xavier_uniform_(self.fc_out.weight)
-
-
-def fun(s, t, alpha, beta, gamma, delta):
-    x = s[0]
-    y = s[1]
-
-    dx = alpha * x - beta * x * y
-    dy = delta * x * y - gamma * y
-
-    return np.array([dx, dy])
-
-
-def bar(s, t):
     Iext = 0.5
     alpha, beta, tau = 0.7, 0.8, 2.5
     x = s[0]
@@ -95,23 +33,23 @@ def bar(s, t):
     return np.array([dx, dy])
 
 
-def foo(s, t):
-    x = s[0]
-    y = s[1]
-    k1, k2 = 1., 1.
-
-    dx = -k1 * x
-    dy = k1 * x - k2 * y
-    dz = k2 * y
-
-    return np.array([dx, dy, dz])
-
-
-def dgm_loss_func(net,
-                  y,
+def dgm_loss_func(y,
                   y0,
                   x,
                   x_ic):
+    """! This is the right-hand side of the FZN system plus the
+    initial conditions. There are no boundary conditions thus we omit that term
+    in the loss function. This function relies on the autograd to estimate the
+    derivatives of the differential equation.
+
+    @param y The approximated solution of the differential equation by the
+    neural network (torch tensor).
+    @param y0 The approximated solution at t = 0 (torch tensor).
+    @param x The independet (covariates) variables (spatial and temporal).
+    @param x_ic The initial conditions.
+
+    @return The loss of the Deep Galerkin method for the differential equation.
+    """
     Iext = 0.5
     alpha, beta, tau = 0.7, 0.8, 2.5
 
@@ -155,6 +93,18 @@ def minimize_loss_dgm(net,
                       batch_size=32,
                       lrate=1e-4,
                       ):
+    """! Main loss minimization function. This function implements the Deep
+    Galerkin Method.
+
+    @param net A torch neural network that will approximate the solution of
+    neural fields.
+    @param y_ic Initial conditions value (float) y(0) = y_ic.
+    @param iterations Number of learning iterations (int).
+    @param batch_size The size of the minibatch (int).
+    @param lrate The learning rate (float) used in the optimization.
+
+    @return A torch neural network (trained), and the training loss (list)
+    """
     optimizer = torch.optim.Adam(net.parameters(), lr=lrate)
 
     t0 = torch.zeros([batch_size, 1], device=device)
@@ -178,7 +128,7 @@ def minimize_loss_dgm(net,
         y = net(t)
         y0 = net(t0)
 
-        loss = dgm_loss_func(net, y, y0, t, y_ic)
+        loss = dgm_loss_func(y, y0, t, y_ic)
 
         loss.backward()
         optimizer.step()
@@ -198,6 +148,15 @@ def minimize_loss_dgm(net,
 
 
 def gridEvaluation(net, nodes=10):
+    """! Evaluates a torch neural network on a rectangular grid (t, x).)
+
+    @param net A torch neural network object.
+    @param nodes Number of spatial discretization nodes for the interval
+    [0, 30].
+
+    @return A Python list that contains solution evaluated on the nodes of a
+    rectangular grid (t, x).
+    """
     t_grid = np.linspace(0.0, 30.0, nodes)
     sol = np.zeros((nodes, 2))
     net.eval()
@@ -210,101 +169,110 @@ def gridEvaluation(net, nodes=10):
 
 
 if __name__ == "__main__":
-    N = 50
-    iters = 80000
-    batch_size = 100
+    N = 50          # Number of iscretization nodes
+    iters = 80000   # Number of learning (minimization) iterations
+    batch_size = 100    # Batch size
+
+    parser = argparse.ArgumentParser(
+                    prog="NeuralFieldsDNNSolver",
+                    description="DNN solver for 1D neural field equations",
+                    epilog="-")
+
+    parser.add_argument('--solve',
+                        action="store_true",)
+    parser.add_argument('--plot',
+                        action="store_true")
+    parser.add_argument('--savefig',
+                        action="store_true")
+    args = parser.parse_args()
     net = DGM(input_dim=1,
               output_dim=2,
               hidden_size=128,
               num_layers=3).to(device)
 
-    # Approximate solution using DGM
-    # y_ic = torch.zeros([batch_size, 2], device=device)
-    # nnet, loss_dgm = minimize_loss_dgm(net,
-    #                                    y_ic,
-    #                                    iterations=iters,
-    #                                    batch_size=batch_size,
-    #                                    lrate=1e-2,
-    #                                    )
-    # y_dgm = gridEvaluation(nnet, nodes=N)
-    # np.save("./temp_results/fn_solution_dgm", y_dgm)
-    # np.save("./temp_results/fn_loss_dgm", np.array(loss_dgm))
-    y_dgm = np.load("./temp_results/fn_solution_dgm.npy")
-    loss_dgm = np.load("./temp_results/fn_loss_dgm.npy")
+    if args.solve:
+        # Approximate solution using DGM
+        y_ic = torch.zeros([batch_size, 2], device=device)
+        nnet, loss_dgm = minimize_loss_dgm(net,
+                                           y_ic,
+                                           iterations=iters,
+                                           batch_size=batch_size,
+                                           lrate=1e-2,
+                                           )
+        y_dgm = gridEvaluation(nnet, nodes=N)
+        np.save("./temp_results/fn_solution_dgm", y_dgm)
+        np.save("./temp_results/fn_loss_dgm", np.array(loss_dgm))
 
     # Exact solution
     t = np.linspace(0, 30.0, N)
-    y_exact = odeint(bar, np.array([0, 0]), t)
+    y_exact = odeint(FZNFun, np.array([0, 0]), t)
 
-    # plt.figure()
-    # plt.plot(y_dgm[:, 0], '-x', label="DGM NN solution")
-    # plt.plot(y_exact[:, 0], label="Exact solution")
-    # plt.legend()
+    if args.plot:
+        y_dgm = np.load("./temp_results/fn_solution_dgm.npy")
+        loss_dgm = np.load("./temp_results/fn_loss_dgm.npy")
 
-    # plt.figure()
-    # plt.plot(y_dgm[:, 1], '-x', label="DGM NN solution")
-    # plt.plot(y_exact[:, 1], label="Exact solution")
-    # plt.legend()
+        # MAE
+        mae_dgm = mean_absolute_error(y_exact, y_dgm)
 
-    # plt.figure()
-    # plt.plot(loss_dgm)
+        fig = plt.figure(figsize=(17, 5))
+        fig.subplots_adjust(wspace=0.3)
+        ax1 = fig.add_subplot(131)
+        ax1.plot(t, y_exact[:, 0], label="Exact solution")
+        ax1.plot(t, y_dgm[:, 0], 'x', label="DGM NN solution", ms=15)
+        ax1.set_ylim([-2.0, 1.5])
+        ax1.set_xticks([0, 15, 30])
+        ax1.set_xticklabels(['0', '15', '30'], fontsize=14, weight='bold')
+        ticks = np.round(ax1.get_yticks(), 2)
+        ax1.set_yticks(ticks)
+        ax1.set_yticklabels(ticks, fontsize=14, weight='bold')
+        # ax1.legend(fontsize=12)
+        ax1.set_xlabel(r"Time (t)", fontsize=14, weight='bold')
+        ax1.set_ylabel(r"y(t)", fontsize=14, weight='bold')
+        ax1.text(0, 1.75, 'A',
+                 va='top',
+                 fontsize=18,
+                 weight='bold')
 
-    # MAE
-    mae_dgm = mean_absolute_error(y_exact, y_dgm)
+        ax1 = fig.add_subplot(132)
+        ax1.plot(t, y_exact[:, 1], label="Exact solution")
+        ax1.plot(t, y_dgm[:, 1], 'x', label="DGM NN solution", ms=15)
+        ax1.set_ylim([-.5, 1.8])
+        ax1.set_xticks([0, 15, 30])
+        ax1.set_xticklabels(['0', '15', '30'], fontsize=14, weight='bold')
+        ticks = np.round(ax1.get_yticks(), 2)
+        ax1.set_yticks(ticks)
+        ax1.set_yticklabels(ticks, fontsize=14, weight='bold')
+        ax1.legend(fontsize=12)
+        ax1.set_xlabel(r"Time (t)", fontsize=14, weight='bold')
+        ax1.set_ylabel(r"w(t)", fontsize=14, weight='bold')
+        ax1.text(0, 2.17, 'B',
+                 va='top',
+                 fontsize=18,
+                 weight='bold')
 
-    fig = plt.figure(figsize=(17, 5))
-    fig.subplots_adjust(wspace=0.3)
-    ax1 = fig.add_subplot(131)
-    ax1.plot(t, y_exact[:, 0], label="Exact solution")
-    ax1.plot(t, y_dgm[:, 0], 'x', label="DGM NN solution", ms=15)
-    ax1.set_ylim([-2.0, 1.5])
-    ax1.set_xticks([0, 15, 30])
-    ax1.set_xticklabels(['0', '15', '30'], fontsize=14, weight='bold')
-    ticks = np.round(ax1.get_yticks(), 2)
-    ax1.set_yticks(ticks)
-    ax1.set_yticklabels(ticks, fontsize=14, weight='bold')
-    # ax1.legend(fontsize=12)
-    ax1.set_xlabel(r"Time (t)", fontsize=14, weight='bold')
-    ax1.set_ylabel(r"y(t)", fontsize=14, weight='bold')
-    ax1.text(0, 1.75, 'A',
-             va='top',
-             fontsize=18,
-             weight='bold')
+        ax2 = fig.add_subplot(133)
+        ax2.plot(loss_dgm[3:], label="DGM loss")
+        ax2.set_ylim([-1, 20])
+        ax2.legend(fontsize=12)
+        ax2.set_xticks([0, 40000, 80000])
+        ax2.set_xticklabels(['0', '40000', '80000'],
+                            fontsize=14,
+                            weight='bold')
+        ticks = np.round(ax2.get_yticks(), 2)
+        ax2.set_yticks(ticks)
+        ax2.set_yticklabels(ticks, fontsize=14, weight='bold')
+        ax2.set_xlabel("Iterations", fontsize=14, weight='bold')
+        ax2.set_ylabel("Loss", fontsize=14, weight='bold')
+        ax2.text(0, 21.4, 'C',
+                 va='top',
+                 fontsize=18,
+                 weight='bold')
 
-    ax1 = fig.add_subplot(132)
-    ax1.plot(t, y_exact[:, 1], label="Exact solution")
-    ax1.plot(t, y_dgm[:, 1], 'x', label="DGM NN solution", ms=15)
-    ax1.set_ylim([-.5, 1.8])
-    ax1.set_xticks([0, 15, 30])
-    ax1.set_xticklabels(['0', '15', '30'], fontsize=14, weight='bold')
-    ticks = np.round(ax1.get_yticks(), 2)
-    ax1.set_yticks(ticks)
-    ax1.set_yticklabels(ticks, fontsize=14, weight='bold')
-    ax1.legend(fontsize=12)
-    ax1.set_xlabel(r"Time (t)", fontsize=14, weight='bold')
-    ax1.set_ylabel(r"w(t)", fontsize=14, weight='bold')
-    ax1.text(0, 2.17, 'B',
-             va='top',
-             fontsize=18,
-             weight='bold')
+        ax2.text(30000, 5,
+                 "DGM MAE: "+str(np.round(mae_dgm, 4)),
+                 fontsize=11,
+                 weight="bold")
 
-    ax2 = fig.add_subplot(133)
-    ax2.plot(loss_dgm[3:], label="DGM loss")
-    ax2.set_ylim([-1, 8])
-    ax2.legend(fontsize=12)
-    ax2.set_xticks([0, 40000, 80000])
-    ax2.set_xticklabels(['0', '40000', '80000'], fontsize=14, weight='bold')
-    ticks = np.round(ax2.get_yticks(), 2)
-    ax2.set_yticks(ticks)
-    ax2.set_yticklabels(ticks, fontsize=14, weight='bold')
-    ax2.set_xlabel("Iterations", fontsize=14, weight='bold')
-    ax2.set_ylabel("Loss", fontsize=14, weight='bold')
-    ax2.text(0, 8.6, 'C',
-             va='top',
-             fontsize=18,
-             weight='bold')
-
-    ax2.text(30000, 5, "DGM MAE: "+str(np.round(mae_dgm, 4)), fontsize=11)
-
-    plt.savefig("figs/fitzhugh_nagumo_solution.pdf")
+        if args.savefig:
+            plt.savefig("figs/fitzhugh_nagumo_solution.pdf")
     plt.show()
