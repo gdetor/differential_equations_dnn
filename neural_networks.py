@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License along
 # with this program. If not, see <https://www.gnu.org/licenses/>.
-import numpy as np
+# import numpy as np
 
 import torch
 from torch import nn
@@ -22,19 +22,28 @@ from torch.nn.init import xavier_uniform_
 
 
 class DGMLayer(nn.Module):
-    """
+    """!
     Implementation of a LSTM-like layer for the neural network proposed by
     J. Sirignano and K. Spiliopoulos, "DGM: A deep learning algorithm for
     solving partial differential equations", 2018.
     """
-    def __init__(self, input_size=1, output_size=1, bias=True):
+    def __init__(self, input_size=1, output_size=1):
+        """! COnstructor of the DGMLayer.
+
+        @param input_size The number of expected features in the input x
+        @param output_size The number of desired features in the output s_new
+
+        @return void
+        """
         super().__init__()
 
         self.input_size = input_size
         self.output_size = output_size
 
+        # Calculate the gain for the Xavier weight initialization
         gain = nn.init.calculate_gain('tanh')
 
+        # Initialize all the parameters
         self.Uz = nn.Parameter(xavier_uniform_(torch.ones([input_size,
                                                            output_size]),
                                                gain=gain))
@@ -66,10 +75,19 @@ class DGMLayer(nn.Module):
         self.br = nn.Parameter(torch.zeros([1, output_size]))
         self.bh = nn.Parameter(torch.zeros([1, output_size]))
 
+        # Set the non-linear activation functions
         self.act1 = nn.ReLU()
         self.act2 = nn.ReLU()
 
     def forward(self, x, s):
+        """!
+        Forward method.
+
+        @param x Input tensor of shape (*, input_size).
+        @param s Previous state tensor of shape (*, output_size).
+
+        @return The new state (solution) of the input.
+        """
         Z = self.act1(torch.matmul(x, self.Uz) + torch.matmul(s, self.Wz) +
                       self.bz)
         G = self.act1(torch.matmul(x, self.Ug) + torch.matmul(s, self.Wg) +
@@ -86,24 +104,40 @@ class DGMLayer(nn.Module):
 
 
 class DGM(nn.Module):
-    """ DGM neural network (see the reference in DGMLayer)
+    """!
+    DGM LSTM-like neural network.
     """
     def __init__(self, input_dim=1, output_dim=1, hidden_size=1, num_layers=1):
         super(DGM, self).__init__()
+        # Input layer
         self.x_in = nn.Linear(input_dim, hidden_size)
 
+        # DGM layers
         self.dgm1 = DGMLayer(input_dim, hidden_size)
         self.layers = nn.ModuleList([DGMLayer(input_dim, hidden_size)
                                      for i in range(num_layers)])
 
+        # Output layer
         self.x_out = nn.Linear(hidden_size, output_dim)
 
+        # Non-linear activation function
         self.sigma = nn.ReLU()
 
+        # Initialize input and output layers
         xavier_uniform_(self.x_in.weight)
         xavier_uniform_(self.x_out.weight)
 
     def forward(self, x):
+        """!
+        Forward method.
+
+        @param x Input tensor of shape (*, input_dim)
+
+        @note The input_dim is the number of covariates (independent variables)
+        and output_dim is the number of dependent variables.
+
+        @return s Output tensor of shape (*, output_dim)
+        """
         s = self.sigma(self.x_in(x))
         for layer in self.layers:
             s = layer(x, s)
@@ -112,8 +146,8 @@ class DGM(nn.Module):
 
 
 class MLP(nn.Module):
-    """
-    Feed-forward neural network
+    """!
+    Feed-forward neural network implementation.
     """
     def __init__(self,
                  input_dim=2,
@@ -121,35 +155,49 @@ class MLP(nn.Module):
                  hidden_size=50,
                  num_layers=1,
                  bn_elements=64):
+        """
+        """
         super(MLP, self).__init__()
 
+        # Input layer
         self.fc_in = nn.Linear(input_dim, hidden_size)
 
+        # Hidden layers
         self.layers = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
                                      for _ in range(num_layers)])
+
+        # Output layer
         self.fc_out = nn.Linear(hidden_size, output_dim)
 
+        # Non-linear activation function
         # self.act = nn.LeakyReLU()
         self.act = nn.Tanh()
 
+        # Initialize or reset the parameters of the MLP
         self.reset()
 
     def forward(self, x):
+        """!
+        Forward method.
+
+        @param x Input tensor of shape (*, input_dim)
+
+        @note The input_dim is the number of covariates (independent variables)
+        and output_dim is the number of dependent variables.
+
+        @return out Tensor of shape (*, output_dim)
+        """
         out = self.act(self.fc_in(x))
         for i, layer in enumerate(self.layers):
             out = self.act(layer(out))
         out = self.fc_out(out)
         return out
 
-    def init_weights(self, layer):
-        if type(layer) == nn.Linear:
-            f_out, f_in = layer.weight.shape[0], layer.weight.shape[1]
-            n = f_in * f_out
-            std = np.sqrt(2.0 / n)
-            w_rnd = torch.randn([f_out, f_in])
-            layer.weight.data = w_rnd * std
-
     def reset(self):
+        """!
+        Initialize (reset) the parameters of the MLP using Xavier's uniform
+        distribution.
+        """
         nn.init.xavier_uniform_(self.fc_in.weight,
                                 gain=nn.init.calculate_gain('tanh'))
         for layer in self.layers:
