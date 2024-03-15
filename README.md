@@ -14,7 +14,8 @@ More precisely,
   - **neural_field.py** This script shows how to solve a one-dimensional neural
   field.
 All the Python scripts in this repository consist supplementary material to 
-[2].
+[2]. They are meant for educatio purpose only and thus therefore the code is
+not organized for production.
 
 
 ## How to get the scripts
@@ -36,6 +37,18 @@ $ python3 heat.py --solve --plot --savefig
 The arguments `--solve` and `--plot` call the methods that solve the heat
 equation and plot the results, respectively. The `--savefig` argument stores
 the plotted figure to the directory `figs/`.
+
+If the user wants to run the Ray hyperparameters tune script they should run:
+```bash
+$ python3 optimize_heat_ray.py
+```
+and after a few minutes and once the optimization process is done the user will
+get the optimal hyperparameters that minimize the loss function. An example of
+the output is given below:
+```bash
+{'batch_size': 214, 'n_iters': 30348, 'lrate': 0.00020380637765567638}
+```
+
 
 
 ## Dependencies
