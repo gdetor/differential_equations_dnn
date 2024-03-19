@@ -134,13 +134,14 @@ def gridEvaluation(net, nodes=10, y_ic=2.0):
         x = torch.ones([1]) * t
         x = x.to(device)
         y = net(x)
-        sol[i] = y[0].detach().cpu().numpy()
+        sol[i] = y[0, 0].detach().cpu().numpy()
     return sol
 
 
 if __name__ == "__main__":
     N = 50      # Number of discretization nodes
-    iters = 3000    # Number of learning iterations
+    n_iters = 3000    # Number of learning iterations
+    batch_size = 32
 
     parser = argparse.ArgumentParser(
                     prog="NeuralFieldsDNNSolver",
@@ -153,17 +154,30 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument('--savefig',
                         action="store_true")
+    parser.add_argument('--niters',
+                        type=int,
+                        default=3000)
+    parser.add_argument('--nnodes',
+                        type=int,
+                        default=50)
+    parser.add_argument('--batch-size',
+                        type=int,
+                        default=32)
     args = parser.parse_args()
 
+    N = args.nnodes
+    n_iters = args.niters
+    batch_size = args.batch_size
+
     # Define the neural network
-    net = DGM(input_dim=1, output_dim=1, hidden_size=32).to(device)
+    net = DGM(input_dim=1, output_dim=1, hidden_size=batch_size).to(device)
 
     if args.solve:
         # Approximate solution using DGM
         nnet, loss_dgm = minimize_loss_dgm(net,
                                            y_ic=2.0,
-                                           iterations=iters,
-                                           batch_size=32,
+                                           iterations=n_iters,
+                                           batch_size=batch_size,
                                            lrate=1e-4,
                                            )
         y_dgm = gridEvaluation(nnet, nodes=N)
@@ -208,8 +222,10 @@ if __name__ == "__main__":
         ax2.plot(loss_dgm, label="DGM loss")
         ax2.legend(fontsize=12)
         ax2.set_ylim([-0.1, 0.5])
-        ax2.set_xticks([0, 1500, 3000])
-        ax2.set_xticklabels(['0', '1500', '3000'], fontsize=14, weight='bold')
+        ax2.set_xticks([0, n_iters//2, n_iters])
+        ax2.set_xticklabels(['0', str(n_iters//2), str(n_iters)],
+                            fontsize=14,
+                            weight='bold')
         ticks = np.round(ax2.get_yticks(), 2)
         ax2.set_yticks(ticks)
         ax2.set_yticklabels(ticks, fontsize=14, weight='bold')

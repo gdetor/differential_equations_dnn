@@ -39,7 +39,14 @@ If the user wants to run the Ray hyperparameters tune script, they should run th
 ```bash
 $ python3 optimize_heat_ray.py
 ```
-After a few minutes, the user will get the optimal hyperparameters that minimize the loss function once the optimization process is complete. An example of the output is given below:
+In the script **optimize_heat_ray.py**, we search only for three hyperparameters: batch size, number of iterations, and learning rate. Thus, the search space is:
+```python
+  search_space = {"batch_size": tune.randint(lower=1, upper=512),
+                    "n_iters": tune.randint(1000, 50000),
+                    "lrate": tune.loguniform(1e-4, 1e-1),
+                    }
+```
+The user will get the optimal hyperparameters that minimize the loss function once the optimization process is complete. An example of the output is given below:
 ```bash
 {'batch_size': 214, 'n_iters': 30348, 'lrate': 0.00020380637765567638}
 ```

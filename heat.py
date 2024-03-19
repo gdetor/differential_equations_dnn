@@ -173,7 +173,8 @@ def gridEvaluation(net, nodes=10):
 
 if __name__ == "__main__":
     N = 40      # Number of discretization nodes
-    iters = 1   # Number of learning iterations
+    n_iters = 15000   # Number of learning iterations
+    batch_size = 64
 
     # Define the neural network
     net = MLP(input_dim=2,
@@ -192,13 +193,26 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument('--savefig',
                         action="store_true")
+    parser.add_argument('--niters',
+                        type=int,
+                        default=15000)
+    parser.add_argument('--nnodes',
+                        type=int,
+                        default=40)
+    parser.add_argument('--batch-size',
+                        type=int,
+                        default=64)
     args = parser.parse_args()
+
+    N = args.nnodes
+    n_iters = args.niters
+    batch_size = args.batch_size
 
     if args.solve:
         # Approximate solution using DGM
         nnet, loss_dgm = minimize_loss_dgm(net,
-                                           iterations=iters,
-                                           batch_size=64,
+                                           iterations=n_iters,
+                                           batch_size=batch_size,
                                            lrate=1e-4,
                                            )
         y_dgm = gridEvaluation(nnet, nodes=N)
@@ -253,8 +267,10 @@ if __name__ == "__main__":
         ax.plot(np.array(loss_dgm), lw=2.0)
         ax.set_xlabel("Iterations", fontsize=16, weight='bold')
         ax.set_ylabel("Loss", fontsize=16, weight='bold')
-        ax.set_xticks([0, int(iters//2), iters])
-        ax.set_xticklabels(['0', '7500', '15000'], fontsize=14, weight='bold')
+        ax.set_xticks([0, int(n_iters//2), n_iters])
+        ax.set_xticklabels(['0', str(n_iters//2), str(n_iters)],
+                           fontsize=14,
+                           weight='bold')
         ticks = np.round(ax.get_yticks(), 2)
         ax.set_yticklabels(ticks, fontsize=14, weight='bold')
         ax.text(0, 4.3, 'C',

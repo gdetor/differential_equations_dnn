@@ -136,7 +136,8 @@ def gridEvaluation(net, nodes=10):
 
 if __name__ == "__main__":
     N = 25  # Number of discretization nodes for the forward Euler's method
-    iters = 5000    # Number of learning (minimization) iterations
+    n_iters = 5000    # Number of learning (minimization) iterations
+    batch_size = 64
 
     parser = argparse.ArgumentParser(
                     prog="NeuralFieldsDNNSolver",
@@ -149,7 +150,20 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument('--savefig',
                         action="store_true")
+    parser.add_argument('--niters',
+                        type=int,
+                        default=5000)
+    parser.add_argument('--nnodes',
+                        type=int,
+                        default=25)
+    parser.add_argument('--batch-size',
+                        type=int,
+                        default=64)
     args = parser.parse_args()
+
+    N = args.nnodes
+    n_iters = args.niters
+    batch_size = args.batch_size
 
     # Define the neural network
     net = MLP(input_dim=1, output_dim=1, hidden_size=32).to(device)
@@ -158,8 +172,8 @@ if __name__ == "__main__":
         # Approximate solution using DGM
         nnet, loss_dgm = minimize_loss_dgm(net,
                                            y_ic=2.0,
-                                           iterations=iters,
-                                           batch_size=64,
+                                           iterations=n_iters,
+                                           batch_size=batch_size,
                                            lrate=1e-4,
                                            )
         # Evaluate the trained neural network
@@ -195,8 +209,10 @@ if __name__ == "__main__":
         ax2.plot(loss_dgm[3:], label="DGM loss")
         ax2.set_ylim([0, 10])
         ax2.legend(fontsize=12)
-        ax2.set_xticks([0, 2500, 5000])
-        ax2.set_xticklabels(['0', '2500', '5000'], fontsize=14, weight='bold')
+        ax2.set_xticks([0, n_iters//2, n_iters])
+        ax2.set_xticklabels(['0', str(n_iters//2), str(n_iters)],
+                            fontsize=14,
+                            weight='bold')
         ticks = np.round(ax2.get_yticks(), 2)
         ax2.set_yticks(ticks)
         ax2.set_yticklabels(ticks, fontsize=14, weight='bold')

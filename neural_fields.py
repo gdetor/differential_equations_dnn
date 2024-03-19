@@ -264,6 +264,8 @@ def fun(s, t, k, D, d, h):
 
 
 if __name__ == '__main__':
+    n_iters = 50000
+    batch_size = 100
     t_nodes = 150
     parser = argparse.ArgumentParser(
                     prog="NeuralFieldsDNNSolver",
@@ -276,7 +278,20 @@ if __name__ == '__main__':
                         action="store_true")
     parser.add_argument('--savefig',
                         action="store_true")
+    parser.add_argument('--niters',
+                        type=int,
+                        default=50000)
+    parser.add_argument('--nnodes',
+                        type=int,
+                        default=150)
+    parser.add_argument('--batch-size',
+                        type=int,
+                        default=100)
     args = parser.parse_args()
+
+    t_nodes = args.nnodes
+    n_iters = args.niters
+    batch_size = args.batch_size
 
     net = MLP(input_dim=2,
               output_dim=1,
@@ -286,8 +301,8 @@ if __name__ == '__main__':
     if args.solve:
         # Solve Neural Fields equation using a Deep Neural Network
         net, loss = minimize_loss_dgm(net,
-                                      iterations=50000,
-                                      batch_size=100,
+                                      iterations=n_iters,
+                                      batch_size=batch_size,
                                       lrate=1e-2,
                                       )
         # Evaluate the neural network
@@ -360,7 +375,7 @@ if __name__ == '__main__':
         ax2.plot(loss[3:], label="DGM loss")
         # ax2.set_ylim([0, 1])
         ax2.legend(fontsize=12)
-        ax2.set_xticks([0, 25000, 50000])
+        ax2.set_xticks([0, n_iters//2, n_iters])
         ticks = ax2.get_xticks()
         ax2.set_xticklabels(ticks, fontsize=14, weight='bold')
         ticks = np.round(ax2.get_yticks(), 2)

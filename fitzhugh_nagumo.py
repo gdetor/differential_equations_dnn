@@ -170,7 +170,7 @@ def gridEvaluation(net, nodes=10):
 
 if __name__ == "__main__":
     N = 50          # Number of iscretization nodes
-    iters = 80000   # Number of learning (minimization) iterations
+    n_iters = 80000   # Number of learning (minimization) iterations
     batch_size = 100    # Batch size
 
     parser = argparse.ArgumentParser(
@@ -184,7 +184,21 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument('--savefig',
                         action="store_true")
+    parser.add_argument('--niters',
+                        type=int,
+                        default=80000)
+    parser.add_argument('--nnodes',
+                        type=int,
+                        default=50)
+    parser.add_argument('--batch-size',
+                        type=int,
+                        default=100)
     args = parser.parse_args()
+
+    N = args.nnodes
+    n_iters = args.niters
+    batch_size = args.batch_size
+
     net = DGM(input_dim=1,
               output_dim=2,
               hidden_size=128,
@@ -195,7 +209,7 @@ if __name__ == "__main__":
         y_ic = torch.zeros([batch_size, 2], device=device)
         nnet, loss_dgm = minimize_loss_dgm(net,
                                            y_ic,
-                                           iterations=iters,
+                                           iterations=n_iters,
                                            batch_size=batch_size,
                                            lrate=1e-2,
                                            )
@@ -254,8 +268,8 @@ if __name__ == "__main__":
         ax2.plot(loss_dgm[3:], label="DGM loss")
         ax2.set_ylim([-1, 20])
         ax2.legend(fontsize=12)
-        ax2.set_xticks([0, 40000, 80000])
-        ax2.set_xticklabels(['0', '40000', '80000'],
+        ax2.set_xticks([0, n_iters//2, n_iters])
+        ax2.set_xticklabels(['0', str(n_iters//2), str(n_iters)],
                             fontsize=14,
                             weight='bold')
         ticks = np.round(ax2.get_yticks(), 2)
