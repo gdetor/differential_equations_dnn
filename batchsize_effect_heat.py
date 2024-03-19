@@ -1,5 +1,5 @@
-# This script shows how one can use the Deep Galerkin method to solve a
-# one-dimensional heat equation (PDE) using deep neural networks.
+# This script shows the effect of different batch sizes on the loss function
+# when we approximate the solution of the heat equation.
 # Copyright (C) 2024  Georgios Is. Detorakis
 #
 # This program is free software: you can redistribute it and/or modify
@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import argparse
+import pickle
 
 import numpy as np
 import matplotlib.pylab as plt
@@ -167,104 +167,74 @@ def gridEvaluation(net, nodes=10):
                            torch.ones([1, 1]) * t], dim=1)
             X = X.to(device)
             y = net(X)
-            sol[i, j] = y[0, 0].detach().cpu().numpy()
+            sol[i, j] = y[0].detach().cpu().numpy()
     return sol
 
 
 if __name__ == "__main__":
-    N = 40      # Number of discretization nodes
-    iters = 1   # Number of learning iterations
+    n_iters = 15000   # Number of learning iterations
+    n_runs = 5
+    n_batches = 10
 
-    # Define the neural network
+    # Define the neural network for the current batch_size
     net = MLP(input_dim=2,
               output_dim=1,
               hidden_size=128,
               num_layers=3).to(device)
 
-    parser = argparse.ArgumentParser(
-                    prog="NeuralFieldsDNNSolver",
-                    description="DNN solver for linear first order ODE",
-                    epilog="-")
+    # Batch sizes as powers of two
+    batch_sizes_list = [2**i for i in range(n_batches+1)]
+    loss_per_batch_size = []
+    for batch_size in batch_sizes_list:
+        print(f"Testing batch size {batch_size}")
 
-    parser.add_argument('--solve',
-                        action="store_true",)
-    parser.add_argument('--plot',
-                        action="store_true")
-    parser.add_argument('--savefig',
-                        action="store_true")
-    args = parser.parse_args()
+        # Run ten times and collect the losses of each run
+        running_loss = np.zeros((n_runs, n_iters))
+        for i in range(n_runs):
+            # Approximate solution using DGM
+            nnet, loss_dgm = minimize_loss_dgm(net,
+                                               iterations=n_iters,
+                                               batch_size=64,
+                                               lrate=1e-4,
+                                               )
+            running_loss[i] = loss_dgm
 
-    if args.solve:
-        # Approximate solution using DGM
-        nnet, loss_dgm = minimize_loss_dgm(net,
-                                           iterations=iters,
-                                           batch_size=64,
-                                           lrate=1e-4,
-                                           )
-        y_dgm = gridEvaluation(nnet, nodes=N)
-        np.save("temp_results/heat_sol_1d_dgm", y_dgm)
-        np.save("temp_results/heat_sol_1d_dgm_loss", np.array(loss_dgm))
+        loss_per_batch_size.append(running_loss.mean(axis=0))
 
-        # Exact solution
-        y_exact = exact_solution(k=1, nodes=N)
-        np.save("temp_results/heat_sol_exact_1d", y_exact)
+    with open("./temp_results/losses.pkl", "wb") as f:
+        pickle.dump(loss_per_batch_size, f)
 
-    if args.plot:
-        y_dgm = np.load("temp_results/heat_sol_1d_dgm.npy")
-        loss_dgm = np.load("temp_results/heat_sol_1d_dgm_loss.npy")
-        y_exact = np.load("./temp_results/heat_sol_exact_1d.npy")
+    # with open("./temp_results/losses.pkl", "rb") as f:
+    #     loss_per_batch_size = pickle.load(f)
 
-        mae_dgm = mean_absolute_error(y_exact, y_dgm)
+    k, m = 1000, 50
+    fig = plt.figure(figsize=(13, 7))
+    ax = fig.add_subplot(111)
+    for i, bs in enumerate(batch_sizes_list):
+        ax.plot(loss_per_batch_size[i][:k],
+                lw=2.0,
+                label="Batch size: "+str(bs))
+    ax.set_xlabel("Iterations", fontsize=16, weight='bold')
+    ax.set_ylabel("Loss", fontsize=16, weight='bold')
+    ax.set_xticks([0, k//2, k])
+    ax.set_xticklabels(['0', str(k//2), str(k)], fontsize=14, weight='bold')
+    ticks = np.round(ax.get_yticks(), 2)
+    ax.set_yticks(ticks)
+    ax.set_yticklabels(ticks, fontsize=14, weight='bold')
+    ax.legend(fontsize=13)
 
-        fig = plt.figure(figsize=(20, 5))
-        fig.subplots_adjust(bottom=0.11)
-        ax = fig.add_subplot(131)
-        im = ax.imshow(y_exact, origin='lower', vmin=0.0, vmax=1.0)
-        plt.colorbar(im)
-        ax.set_xticks([0, 20, 39])
-        ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
-                           fontsize=14, weight='bold')
-        ax.set_yticks([0, 20, 39])
-        ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
-        ax.title.set_text('Exact solution')
-        ax.set_ylabel("Time", fontsize=16, weight='bold')
-        ax.set_xlabel("Space", fontsize=16, weight='bold')
-        ax.text(0, 40, 'A',
-                ha='left',
-                fontsize=18,
-                weight='bold')
+    left, bottom, width, height = [0.25, 0.6, 0.2, 0.2]
+    ax2 = fig.add_axes([left, bottom, width, height])
+    for i, bs in enumerate(batch_sizes_list):
+        ax2.plot(loss_per_batch_size[i][:m],
+                 lw=2.0,
+                 label="Bastch size: "+str(bs))
+    ax2.set_xlabel("Iterations", fontsize=16, weight='bold')
+    ax2.set_ylabel("Loss", fontsize=16, weight='bold')
+    ax2.set_xticks([0, m//2, m])
+    ax2.set_xticklabels(['0', str(m//2), str(m)], fontsize=14, weight='bold')
+    ax2.set_yticks([0.0, 0.25, 0.5])
+    ax2.set_yticklabels(['0', '0.25', '0.5'], fontsize=14, weight='bold')
 
-        ax = fig.add_subplot(132)
-        im = ax.imshow(y_dgm, origin="lower", vmin=0.0, vmax=1.0)
-        plt.colorbar(im)
-        ax.set_yticks([0, 20, 39])
-        ax.set_yticklabels(['0', '1.5', '3'], fontsize=14, weight='bold')
-        ax.set_xticks([0, 20, 39])
-        ax.set_xticklabels(['0', r'$\frac{\pi}{{\bf 2}}$', r'$\pi$'],
-                           fontsize=14, weight='bold')
-        ax.set_xlabel("Space", fontsize=16, weight='bold')
-        ax.title.set_text('Approximated solution (DNN)')
-        ax.text(0, 40, 'B',
-                ha='left',
-                fontsize=18,
-                weight='bold')
-
-        ax = fig.add_subplot(133)
-        ax.plot(np.array(loss_dgm), lw=2.0)
-        ax.set_xlabel("Iterations", fontsize=16, weight='bold')
-        ax.set_ylabel("Loss", fontsize=16, weight='bold')
-        ax.set_xticks([0, int(iters//2), iters])
-        ax.set_xticklabels(['0', '7500', '15000'], fontsize=14, weight='bold')
-        ticks = np.round(ax.get_yticks(), 2)
-        ax.set_yticklabels(ticks, fontsize=14, weight='bold')
-        ax.text(0, 4.3, 'C',
-                ha='left',
-                fontsize=18,
-                weight='bold')
-        ax.text(9000, 2.5, "DGM MAE: "+str(np.round(mae_dgm, 4)),
-                fontsize=13,
-                weight='bold')
-
-        if args.savefig:
-            plt.savefig("figs/heat_1dim_solution.pdf")
+    # plt.savefig("./figs/batchsize_effect.pdf")
     plt.show()

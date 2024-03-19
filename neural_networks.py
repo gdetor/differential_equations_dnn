@@ -172,6 +172,7 @@ class MLP(nn.Module):
         # Non-linear activation function
         # self.act = nn.LeakyReLU()
         self.act = nn.Tanh()
+        # self.act = nn.ReLU()
 
         # Initialize or reset the parameters of the MLP
         self.reset()
