@@ -8,7 +8,6 @@ The present repository contains the following Python scripts:
   - **heat.py** solves a one-dimensional heat equation (PDE).
   - **fredholm.py** solves a Fredholm integral equation of the second kind.
   - **fitzhugh_nagumo.py** solves the Fitzhugh-Nagumo system of ODEs.
-  - **neural_field.py** This script shows how to solve a one-dimensional neural field.
   - **optimize_heat_ray.py** This script uses Ray Tune to search for optimal hyperparameters.
   - **batchsize_effect_heat.py** This script shows how different batch sizes can affect the minimization process when we approximate the solution of a heat equation.
   - **batchnorm_effect_heat.py** Similar to the previous script, this one shows how batch normalization affects the minimization process of approximating the solution of a one-dimensional heat equation.

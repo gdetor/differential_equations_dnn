@@ -38,30 +38,28 @@ def exact_solution(t):
     return 2.0 * np.exp(-t)
 
 
-def dgm_loss_func(y, y0, x, x0, x_ic):
+def dgm_loss_func(y, y0, t, y_ic):
     """! This is the right-hand side of the ODE plus the initial conditions.
     There are no boundary conditions thus we omit that term
     in the loss function. This function relies on the autograd to estimate the
     derivatives of the differential equation.
 
-    @param y The approximated solution of the differential equation by the
-    neural network (torch tensor).
-    @param y0 The approximated solution at t = 0 (torch tensor).
-    @param x The independet (covariates) variables (spatial and temporal).
-    @param x0 The initial values of the independent variables (torch tensor).
-    @param x_ic The initial conditions.
+    @param y Neural network approximated solution (torch tensor).
+    @param y0 Neural network approximated solution at t = 0 (torch tensor).
+    @param t The independet (covariates) variable (time).
+    @param y_ic The initial conditions.
 
     @return The loss of the Deep Galerkin method for the differential equation.
     """
     dydt = torch.autograd.grad(y,
-                               x,
+                               t,
                                grad_outputs=torch.ones_like(y),
                                create_graph=True,
                                retain_graph=True)[0]
 
     L_domain = ((dydt + y)**2)
 
-    L_init = ((y0 - x_ic)**2)
+    L_init = ((y0 - y_ic)**2)
     return torch.mean(L_domain + L_init)
 
 
@@ -100,7 +98,7 @@ def minimize_loss_dgm(net,
         y = net(t)
         y0 = net(t0)
 
-        loss = dgm_loss_func(y, y0, t, t0, y_ic)
+        loss = dgm_loss_func(y, y0, t, y_ic)
 
         loss.backward()
         optimizer.step()
@@ -183,7 +181,15 @@ if __name__ == "__main__":
         t = np.linspace(0, 1.0, N)
         y_exact = exact_solution(t)
 
+        np.save("./temp_results/test_simple_ode_nn_sol", y_dgm)
+        np.save("./temp_results/test_simple_ode_nn_loss", loss_dgm)
+        np.save("./temp_results/test_simple_ode_sol", y_exact)
+
     if args.plot:
+        t = np.linspace(0, 1.0, N)
+        y_dgm = np.load("./temp_results/test_simple_ode_nn_sol.npy")
+        loss_dgm = np.load("./temp_results/test_simple_ode_nn_loss.npy")
+        y_exact = np.load("./temp_results/test_simple_ode_sol.npy")
         # MAE
         mae_dgm = mean_absolute_error(y_exact, y_dgm)
 
@@ -207,7 +213,7 @@ if __name__ == "__main__":
 
         ax2 = fig.add_subplot(122)
         ax2.plot(loss_dgm[3:], label="DGM loss")
-        ax2.set_ylim([0, 10])
+        # ax2.set_ylim([0, 10])
         ax2.legend(fontsize=12)
         ax2.set_xticks([0, n_iters//2, n_iters])
         ax2.set_xticklabels(['0', str(n_iters//2), str(n_iters)],
@@ -218,12 +224,12 @@ if __name__ == "__main__":
         ax2.set_yticklabels(ticks, fontsize=14, weight='bold')
         ax2.set_xlabel("Iterations", fontsize=14, weight='bold')
         ax2.set_ylabel("Loss", fontsize=14, weight='bold')
-        ax2.text(0, 10.8, 'B',
+        ax2.text(0, 5.5, 'B',
                  va='top',
                  fontsize=18,
                  weight='bold')
 
-        ax2.text(2500, 8, "DGM MAE: "+str(np.round(mae_dgm, 4)),
+        ax2.text(2500, 4, "DGM MAE: "+str(np.round(mae_dgm, 4)),
                  fontsize=13,
                  weight='bold')
 

@@ -44,7 +44,7 @@ def exact_solution(t):
     return 2.0 * np.sin(t)
 
 
-def dgm_loss_func(net, x, n=50):
+def dgm_loss_func(net, x, k=50):
     """! This is the right-hand side of the Fredholm equation plus the
     initial conditions. There are no boundary conditions thus we omit that term
     in the loss function. This function relies on the autograd to estimate the
@@ -54,23 +54,23 @@ def dgm_loss_func(net, x, n=50):
     of the Fredholm equation.
     neural network (torch tensor).
     @param x The independet (covariates) variables (spatial and temporal).
-    @param n Number (int) of discretization nodes used by Monte Carlo
+    @param k Number (int) of discretization nodes used by Monte Carlo
     integration to estimate the integral of the Fredholm equation.
 
     @return The loss of the Deep Galerkin method for the neural field.
     """
 
     # Monte Carlo integration
-    dr = np.pi / (2 * n)
+    dr = np.pi / (2 * k)
     integral = 0.0
-    for i in range(n):
-        y = np.pi/2.0 * torch.rand_like(x)
-        integral += torch.sin(x) * torch.cos(y) * net(y)
+    for i in range(k):
+        t = np.pi/2.0 * torch.rand_like(x)
+        integral += torch.sin(x) * torch.cos(t) * net(t)
     integral *= dr
 
-    f = net(x)
+    yhat = net(x)
 
-    L = ((f - torch.sin(x) - integral)**2)
+    L = ((yhat - torch.sin(x) - integral)**2)
     return torch.mean(L)
 
 
@@ -221,7 +221,7 @@ if __name__ == "__main__":
         ax2 = fig.add_subplot(122)
         ax2.plot(loss_dgm, label="DGM loss")
         ax2.legend(fontsize=12)
-        ax2.set_ylim([-0.1, 0.5])
+        # ax2.set_ylim([-0.1, 0.5])
         ax2.set_xticks([0, n_iters//2, n_iters])
         ax2.set_xticklabels(['0', str(n_iters//2), str(n_iters)],
                             fontsize=14,
@@ -231,7 +231,7 @@ if __name__ == "__main__":
         ax2.set_yticklabels(ticks, fontsize=14, weight='bold')
         ax2.set_xlabel("Iterations", fontsize=14, weight='bold')
         ax2.set_ylabel("Loss", fontsize=14, weight='bold')
-        ax2.text(0, 0.54, 'B',
+        ax2.text(0, 0.87, 'B',
                  va='top',
                  fontsize=18,
                  weight='bold')

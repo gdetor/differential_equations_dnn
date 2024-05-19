@@ -27,8 +27,8 @@ class DGMLayer(nn.Module):
     J. Sirignano and K. Spiliopoulos, "DGM: A deep learning algorithm for
     solving partial differential equations", 2018.
     """
-    def __init__(self, input_size=1, output_size=1):
-        """! COnstructor of the DGMLayer.
+    def __init__(self, input_size=1, output_size=1, func='relu'):
+        """! Constructor of the DGMLayer.
 
         @param input_size The number of expected features in the input x
         @param output_size The number of desired features in the output s_new
@@ -41,7 +41,7 @@ class DGMLayer(nn.Module):
         self.output_size = output_size
 
         # Calculate the gain for the Xavier weight initialization
-        gain = nn.init.calculate_gain('tanh')
+        gain = nn.init.calculate_gain('relu')
 
         # Initialize all the parameters
         self.Uz = nn.Parameter(xavier_uniform_(torch.ones([input_size,
@@ -76,8 +76,12 @@ class DGMLayer(nn.Module):
         self.bh = nn.Parameter(torch.zeros([1, output_size]))
 
         # Set the non-linear activation functions
-        self.act1 = nn.ReLU()
-        self.act2 = nn.ReLU()
+        if func == "relu":
+            self.act1 = nn.ReLU()
+            self.act2 = nn.ReLU()
+        else:
+            self.act1 = nn.Tanh()
+            self.act2 = nn.Tanh()
 
     def forward(self, x, s):
         """!
@@ -107,13 +111,18 @@ class DGM(nn.Module):
     """!
     DGM LSTM-like neural network.
     """
-    def __init__(self, input_dim=1, output_dim=1, hidden_size=1, num_layers=1):
+    def __init__(self,
+                 input_dim=1,
+                 output_dim=1,
+                 hidden_size=1,
+                 num_layers=1,
+                 func="relu"):
         super(DGM, self).__init__()
         # Input layer
         self.x_in = nn.Linear(input_dim, hidden_size)
 
         # DGM layers
-        self.dgm1 = DGMLayer(input_dim, hidden_size)
+        self.dgm1 = DGMLayer(input_dim, hidden_size, func=func)
         self.layers = nn.ModuleList([DGMLayer(input_dim, hidden_size)
                                      for i in range(num_layers)])
 
@@ -121,7 +130,10 @@ class DGM(nn.Module):
         self.x_out = nn.Linear(hidden_size, output_dim)
 
         # Non-linear activation function
-        self.sigma = nn.ReLU()
+        if func == "relu":
+            self.sigma = nn.ReLU()
+        else:
+            self.sigma = nn.Tanh()
 
         # Initialize input and output layers
         xavier_uniform_(self.x_in.weight)
@@ -154,7 +166,8 @@ class MLP(nn.Module):
                  output_dim=1,
                  hidden_size=50,
                  num_layers=1,
-                 bn_elements=64):
+                 batch_norm=False
+                 ):
         """
         """
         super(MLP, self).__init__()
@@ -174,6 +187,12 @@ class MLP(nn.Module):
         self.act = nn.Tanh()
         # self.act = nn.ReLU()
 
+        if batch_norm:
+            self.bn = nn.BatchNorm1d(hidden_size)
+        else:
+            print("No batch normalization")
+            self.bn = nn.Identity()
+
         # Initialize or reset the parameters of the MLP
         self.reset()
 
@@ -188,9 +207,9 @@ class MLP(nn.Module):
 
         @return out Tensor of shape (*, output_dim)
         """
-        out = self.act(self.fc_in(x))
+        out = self.act(self.bn(self.fc_in(x)))
         for i, layer in enumerate(self.layers):
-            out = self.act(layer(out))
+            out = self.act(self.bn(layer(out)))
         out = self.fc_out(out)
         return out
 

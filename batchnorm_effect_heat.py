@@ -39,8 +39,7 @@ class MLPBNPost(nn.Module):
                  input_dim=2,
                  output_dim=1,
                  hidden_size=50,
-                 num_layers=1,
-                 bn_elements=64):
+                 num_layers=1):
         """
         """
         super(MLPBNPost, self).__init__()
@@ -104,8 +103,7 @@ class MLPBNPre(nn.Module):
                  input_dim=2,
                  output_dim=1,
                  hidden_size=50,
-                 num_layers=1,
-                 bn_elements=64):
+                 num_layers=1):
         """
         """
         super(MLPBNPre, self).__init__()
@@ -182,23 +180,23 @@ def dgm_loss_func(net, x, x0, xbd1, xbd2, x_bd1, x_bd2):
     @return The loss of the Deep Galerkin method for the differential equation.
     """
     kappa = 1.0
-    u = net(x)
+    y = net(x)
 
-    du = torch.autograd.grad(u,
+    dy = torch.autograd.grad(y,
                              x,
-                             grad_outputs=torch.ones_like(u),
+                             grad_outputs=torch.ones_like(y),
                              create_graph=True,
                              retain_graph=True)[0]
-    dudt = du[:, 1].unsqueeze(1)
-    dudx = du[:, 0].unsqueeze(1)
+    dydt = dy[:, 1].unsqueeze(1)
+    dydx = dy[:, 0].unsqueeze(1)
 
-    dudxx = torch.autograd.grad(dudx,
+    dydxx = torch.autograd.grad(dydx,
                                 x,
-                                grad_outputs=torch.ones_like(u),
+                                grad_outputs=torch.ones_like(y),
                                 create_graph=True,
                                 retain_graph=True)[0][:, 0].unsqueeze(1)
 
-    L_domain = ((dudt - kappa * dudxx)**2)
+    L_domain = ((dydt - kappa * dydxx)**2)
 
     y0 = net(x0)
     L_init = ((y0 - torch.sin(x0[:, 0].unsqueeze(1)))**2)

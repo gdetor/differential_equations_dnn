@@ -1,3 +1,19 @@
+# This script shows how to solve numerically the FitzHugh-Nagumo system using
+# the Deep Galerkin method and Deep Neural Networks.
+# Copyright (C) 2024  Georgios Is. Detorakis
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
 
 import numpy as np
@@ -10,7 +26,8 @@ from sklearn.metrics import mean_absolute_error
 
 import torch
 
-from neural_networks import DGM
+# from neural_networks import DGM
+from dgm_net import DGM
 from auxiliary_funs import fn_timer
 
 style.use('tableau-colorblind10')
@@ -35,53 +52,47 @@ def FZNFun(s, t):
 
 def dgm_loss_func(y,
                   y0,
-                  x,
-                  x_ic):
+                  t,
+                  y_ic):
     """! This is the right-hand side of the FZN system plus the
     initial conditions. There are no boundary conditions thus we omit that term
     in the loss function. This function relies on the autograd to estimate the
     derivatives of the differential equation.
 
-    @param y The approximated solution of the differential equation by the
-    neural network (torch tensor).
-    @param y0 The approximated solution at t = 0 (torch tensor).
-    @param x The independet (covariates) variables (spatial and temporal).
-    @param x_ic The initial conditions.
+    @param y Neural network approximated solution (torch tensor).
+    @param y0 Neural network approximated solution at t = 0 (torch tensor).
+    @param t The independet (covariates) variables (spatial and temporal).
+    @param y_ic The initial conditions.
 
     @return The loss of the Deep Galerkin method for the differential equation.
     """
     Iext = 0.5
     alpha, beta, tau = 0.7, 0.8, 2.5
 
-    X, Y = y[:, 0].unsqueeze(1), y[:, 1].unsqueeze(1)
-
-    dX = torch.autograd.grad(X,
-                             x,
-                             grad_outputs=torch.ones_like(X),
-                             create_graph=True,
-                             retain_graph=True)[0]
+    Y, W = y[:, 0].unsqueeze(1), y[:, 1].unsqueeze(1)
 
     dY = torch.autograd.grad(Y,
-                             x,
+                             t,
                              grad_outputs=torch.ones_like(Y),
                              create_graph=True,
                              retain_graph=True)[0]
 
+    dW = torch.autograd.grad(W,
+                             t,
+                             grad_outputs=torch.ones_like(W),
+                             create_graph=True,
+                             retain_graph=True)[0]
+
     # dy = torch.autograd.functional.jacobian(lambda x_: net(x_),
-    #                                         x,
+    #                                         t,
     #                                         vectorize=True,
     #                                         strategy="forward-mode")
     # dX = torch.diagonal(torch.diagonal(dy, 0, -1), 0)[0].unsqueeze(1)
     # dY = torch.diagonal(torch.diagonal(dy, 1, -1), 0)[0].unsqueeze(1)
     # dZ = torch.diagonal(torch.diagonal(dy, 2, -1), 0)[0].unsqueeze(1)
-    Lx = torch.sum((dX + (X**3/3.0 + Y - Iext - X))**2)
-    Ly = torch.sum((dY + (beta * Y - alpha - X) / tau)**2)
-    L0 = torch.sum((y0 - x_ic)**2)
-
-    # Lx = torch.sum((dX + k1 * X)**2)
-    # Ly = torch.sum((dY - k1 * X + k2 * Y)**2)
-    # Lz = torch.sum((dZ - k2 * Y)**2)
-    # L0 = torch.sum((y0 - x_ic)**2)
+    Lx = torch.mean((dY + (Y**3/3.0 + W - Iext - Y))**2)
+    Ly = torch.mean((dW + (beta * W - alpha - Y) / tau)**2)
+    L0 = torch.mean((y0 - y_ic)**2)
 
     return Lx + Ly + L0
 
@@ -112,12 +123,10 @@ def minimize_loss_dgm(net,
     num_samples = 200
     T = torch.linspace(0.0, 30.0, steps=num_samples)
     prob = torch.tensor([1/num_samples for _ in range(num_samples)])
-    # t.requires_grad = True
-    # t = t.to(device)
 
     train_loss = []
     for i in range(iterations):
-        # t = 50.01 * torch.rand([batch_size, 1])
+        # t = 30.01 * torch.rand([batch_size, 1])
         idx = prob.multinomial(num_samples=batch_size, replacement=False)
         t = T[idx].reshape(-1, 1)
         t.requires_grad = True
@@ -139,10 +148,10 @@ def minimize_loss_dgm(net,
             lr = optimizer.param_groups[0]['lr']
             print(f"Iteration: {i}, Loss: {loss.item()}, LR: {lr}")
 
-        if i > 5000 and i < 35000:
-            optimizer.param_groups[0]['lr'] = 1e-4
-        elif i > 35000:
-            optimizer.param_groups[0]['lr'] = 1e-5
+        # if i > 25000 and i < 55000:
+        #     optimizer.param_groups[0]['lr'] = 1e-4
+        # elif i > 55000:
+        #     optimizer.param_groups[0]['lr'] = 1e-5
 
     return net, train_loss
 
@@ -170,8 +179,8 @@ def gridEvaluation(net, nodes=10):
 
 if __name__ == "__main__":
     N = 50          # Number of iscretization nodes
-    n_iters = 80000   # Number of learning (minimization) iterations
-    batch_size = 100    # Batch size
+    n_iters = 150000   # Number of learning (minimization) iterations
+    batch_size = 256    # Batch size
 
     parser = argparse.ArgumentParser(
                     prog="NeuralFieldsDNNSolver",
@@ -186,7 +195,7 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument('--niters',
                         type=int,
-                        default=80000)
+                        default=150000)
     parser.add_argument('--nnodes',
                         type=int,
                         default=50)
@@ -202,7 +211,7 @@ if __name__ == "__main__":
     net = DGM(input_dim=1,
               output_dim=2,
               hidden_size=128,
-              num_layers=3).to(device)
+              num_layers=4).to(device)
 
     if args.solve:
         # Approximate solution using DGM
@@ -211,19 +220,19 @@ if __name__ == "__main__":
                                            y_ic,
                                            iterations=n_iters,
                                            batch_size=batch_size,
-                                           lrate=1e-2,
+                                           lrate=1e-4,
                                            )
         y_dgm = gridEvaluation(nnet, nodes=N)
-        np.save("./temp_results/fn_solution_dgm", y_dgm)
-        np.save("./temp_results/fn_loss_dgm", np.array(loss_dgm))
+        np.save("./temp_results/new_fn_solution_dgm", y_dgm)
+        np.save("./temp_results/new_fn_loss_dgm", np.array(loss_dgm))
 
     # Exact solution
     t = np.linspace(0, 30.0, N)
     y_exact = odeint(FZNFun, np.array([0, 0]), t)
 
     if args.plot:
-        y_dgm = np.load("./temp_results/fn_solution_dgm.npy")
-        loss_dgm = np.load("./temp_results/fn_loss_dgm.npy")
+        y_dgm = np.load("./temp_results/new_fn_solution_dgm.npy")
+        loss_dgm = np.load("./temp_results/new_fn_loss_dgm.npy")
 
         # MAE
         mae_dgm = mean_absolute_error(y_exact, y_dgm)
@@ -266,7 +275,8 @@ if __name__ == "__main__":
 
         ax2 = fig.add_subplot(133)
         ax2.plot(loss_dgm[3:], label="DGM loss")
-        ax2.set_ylim([-1, 20])
+        # ax2.semilogy(loss_dgm[3:], label="DGM loss")
+        ax2.set_ylim([0.0, 0.01])
         ax2.legend(fontsize=12)
         ax2.set_xticks([0, n_iters//2, n_iters])
         ax2.set_xticklabels(['0', str(n_iters//2), str(n_iters)],
@@ -277,12 +287,12 @@ if __name__ == "__main__":
         ax2.set_yticklabels(ticks, fontsize=14, weight='bold')
         ax2.set_xlabel("Iterations", fontsize=14, weight='bold')
         ax2.set_ylabel("Loss", fontsize=14, weight='bold')
-        ax2.text(0, 21.4, 'C',
+        ax2.text(0, 0.0107, 'C',
                  va='top',
                  fontsize=18,
                  weight='bold')
 
-        ax2.text(30000, 5,
+        ax2.text(80000, 0.005,
                  "DGM MAE: "+str(np.round(mae_dgm, 4)),
                  fontsize=11,
                  weight="bold")
