@@ -117,7 +117,8 @@ def minimize_loss_dgm(net,
     t0 = torch.zeros([batch_size, 1], device=device)
 
     xbd1 = torch.zeros([batch_size, 1], device=device)
-    xbd2 = torch.zeros([batch_size, 1], device=device)
+    xbd2x = torch.ones([batch_size, 1], device=device) * torch.pi
+    xbd2y = torch.zeros([batch_size, 1], device=device)
 
     train_loss = []
     for i in range(iterations):
@@ -130,11 +131,11 @@ def minimize_loss_dgm(net,
         X0 = torch.cat([x, t0], dim=1)
 
         X_BD1 = torch.cat([xbd1, t], dim=1)
-        X_BD2 = torch.cat([xbd2, t], dim=1)
+        X_BD2 = torch.cat([xbd2x, t], dim=1)
 
         optimizer.zero_grad()
 
-        loss = dgm_loss_func(net, X, X0, X_BD1, X_BD2, xbd1, xbd2)
+        loss = dgm_loss_func(net, X, X0, X_BD1, X_BD2, xbd1, xbd2y)
 
         loss.backward()
         optimizer.step()
