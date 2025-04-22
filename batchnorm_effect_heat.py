@@ -45,10 +45,12 @@ class MLPBNPost(nn.Module):
         super(MLPBNPost, self).__init__()
 
         # Input layer
-        self.fc_in = nn.Linear(input_dim, hidden_size)
+        self.fc_in = nn.Linear(input_dim, hidden_size, bias=False)
 
         # Hidden layers
-        self.layers = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
+        self.layers = nn.ModuleList([nn.Linear(hidden_size,
+                                               hidden_size,
+                                               bias=False)
                                      for _ in range(num_layers)])
 
         # Output layer
@@ -57,6 +59,9 @@ class MLPBNPost(nn.Module):
         # Non-linear activation function
         # self.act = nn.LeakyReLU()
         self.act = nn.ReLU()
+        self.act_flag = "relu"
+        # self.act = nn.Tanh()
+        # self.act_flag = "tanh"
 
         self.bn = nn.BatchNorm1d(hidden_size)
 
@@ -87,12 +92,22 @@ class MLPBNPost(nn.Module):
         Initialize (reset) the parameters of the MLP using Xavier's uniform
         distribution.
         """
-        nn.init.xavier_uniform_(self.fc_in.weight,
-                                gain=nn.init.calculate_gain('tanh'))
-        for layer in self.layers:
-            nn.init.xavier_uniform_(layer.weight,
+        if self.act_flag == "tanh":
+            nn.init.xavier_uniform_(self.fc_in.weight,
                                     gain=nn.init.calculate_gain('tanh'))
-        nn.init.xavier_uniform_(self.fc_out.weight)
+            for layer in self.layers:
+                nn.init.xavier_uniform_(layer.weight,
+                                        gain=nn.init.calculate_gain('tanh'))
+            nn.init.xavier_uniform_(self.fc_out.weight,
+                                    gain=nn.init.calculate_gain('tanh'))
+        else:
+            nn.init.kaiming_uniform_(self.fc_in.weight,
+                                     nonlinearity="relu")
+            for layer in self.layers:
+                nn.init.kaiming_uniform_(layer.weight,
+                                         nonlinearity="relu")
+            nn.init.kaiming_uniform_(self.fc_out.weight,
+                                     nonlinearity="relu")
 
 
 class MLPBNPre(nn.Module):
@@ -109,10 +124,12 @@ class MLPBNPre(nn.Module):
         super(MLPBNPre, self).__init__()
 
         # Input layer
-        self.fc_in = nn.Linear(input_dim, hidden_size)
+        self.fc_in = nn.Linear(input_dim, hidden_size, bias=False)
 
         # Hidden layers
-        self.layers = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
+        self.layers = nn.ModuleList([nn.Linear(hidden_size,
+                                               hidden_size,
+                                               bias=False)
                                      for _ in range(num_layers)])
 
         # Output layer
@@ -121,6 +138,9 @@ class MLPBNPre(nn.Module):
         # Non-linear activation function
         # self.act = nn.LeakyReLU()
         self.act = nn.ReLU()
+        self.act_flag = "relu"
+        # self.act = nn.Tanh()
+        # self.act_flag = "tanh"
 
         self.bn = nn.BatchNorm1d(hidden_size)
 
@@ -151,12 +171,21 @@ class MLPBNPre(nn.Module):
         Initialize (reset) the parameters of the MLP using Xavier's uniform
         distribution.
         """
-        nn.init.xavier_uniform_(self.fc_in.weight,
-                                gain=nn.init.calculate_gain('tanh'))
-        for layer in self.layers:
-            nn.init.xavier_uniform_(layer.weight,
+        if self.act_flag == "tanh":
+            nn.init.xavier_uniform_(self.fc_in.weight,
                                     gain=nn.init.calculate_gain('tanh'))
-        nn.init.xavier_uniform_(self.fc_out.weight)
+            for layer in self.layers:
+                nn.init.xavier_uniform_(layer.weight,
+                                        gain=nn.init.calculate_gain('tanh'))
+            nn.init.xavier_uniform_(self.fc_out.weight)
+        else:
+            nn.init.kaiming_uniform_(self.fc_in.weight,
+                                     nonlinearity="relu")
+            for layer in self.layers:
+                nn.init.kaiming_uniform_(layer.weight,
+                                         nonlinearity="relu")
+            nn.init.kaiming_uniform_(self.fc_out.weight,
+                                     nonlinearity="relu")
 
 
 def dgm_loss_func(net, x, x0, xbd1, xbd2, x_bd1, x_bd2):

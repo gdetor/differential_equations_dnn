@@ -21,6 +21,26 @@ from torch import nn
 from torch.nn.init import xavier_uniform_
 
 
+def selectActivationFunction(name,
+                             beta=1.5):
+    if name == "relu":
+        print("--------- ReLU selected!")
+        return nn.ReLU()
+    elif name == "sigmoid":
+        print("--------- Sigmoid selected!")
+        return nn.Sigmoid()
+    elif name == "tanh":
+        print("--------- Tanh selected!")
+        return nn.Tanh()
+    elif name == "leaky_relu":
+        print("--------- LeakyReLU selected!")
+        return nn.LeakyReLU()
+    else:
+        print("Activation not found!")
+        print("--------- ReLU selected!")
+        return nn.ReLU()
+
+
 class DGMLayer(nn.Module):
     """!
     Implementation of a LSTM-like layer for the neural network proposed by
@@ -166,32 +186,43 @@ class MLP(nn.Module):
                  output_dim=1,
                  hidden_size=50,
                  num_layers=1,
-                 batch_norm=False
+                 batch_norm=False,
+                 activation="relu"
                  ):
         """
         """
         super(MLP, self).__init__()
+        self.activation = activation
 
-        # Input layer
-        self.fc_in = nn.Linear(input_dim, hidden_size)
+        if batch_norm:
+            self.bn = nn.BatchNorm1d(hidden_size)
 
-        # Hidden layers
-        self.layers = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
-                                     for _ in range(num_layers)])
+            # Input layer
+            self.fc_in = nn.Linear(input_dim, hidden_size, bias=False)
+
+            # Hidden layers
+            self.layers = nn.ModuleList([nn.Linear(hidden_size,
+                                                   hidden_size,
+                                                   bias=False)
+                                         for _ in range(num_layers)])
+        else:
+            print("No batch normalization")
+            self.bn = nn.Identity()
+
+            # Input layer
+            self.fc_in = nn.Linear(input_dim, hidden_size)
+
+            # Hidden layers
+            self.layers = nn.ModuleList([nn.Linear(hidden_size, hidden_size)
+                                         for _ in range(num_layers)])
 
         # Output layer
         self.fc_out = nn.Linear(hidden_size, output_dim)
 
         # Non-linear activation function
-        # self.act = nn.LeakyReLU()
-        self.act = nn.Tanh()
-        # self.act = nn.ReLU()
-
-        if batch_norm:
-            self.bn = nn.BatchNorm1d(hidden_size)
-        else:
-            print("No batch normalization")
-            self.bn = nn.Identity()
+        # self.act = nn.Tanh()
+        self.act = nn.ReLU()
+        self.act = selectActivationFunction(activation)
 
         # Initialize or reset the parameters of the MLP
         self.reset()
@@ -218,12 +249,25 @@ class MLP(nn.Module):
         Initialize (reset) the parameters of the MLP using Xavier's uniform
         distribution.
         """
-        nn.init.xavier_uniform_(self.fc_in.weight,
-                                gain=nn.init.calculate_gain('tanh'))
-        for layer in self.layers:
-            nn.init.xavier_uniform_(layer.weight,
-                                    gain=nn.init.calculate_gain('tanh'))
-        nn.init.xavier_uniform_(self.fc_out.weight)
+        if self.activation not in ["relu", "leaky_relu"]:
+            nn.init.xavier_uniform_(self.fc_in.weight,
+                                    gain=nn.init.calculate_gain(
+                                        self.activation)
+                                    )
+            for layer in self.layers:
+                nn.init.xavier_uniform_(layer.weight,
+                                        gain=nn.init.calculate_gain(
+                                            self.activation)
+                                        )
+            nn.init.xavier_uniform_(self.fc_out.weight)
+        else:
+            nn.init.kaiming_uniform_(self.fc_in.weight,
+                                     nonlinearity=self.activation)
+            for layer in self.layers:
+                nn.init.kaiming_uniform_(layer.weight,
+                                         nonlinearity=self.activation)
+            nn.init.kaiming_uniform_(self.fc_out.weight,
+                                     nonlinearity=self.activation)
 
 
 class ResidualBlock(nn.Module):
@@ -238,10 +282,10 @@ class ResidualBlock(nn.Module):
         super().__init__()
         self.downsample = downsample
 
-        self.fc1 = nn.Sequential(nn.Linear(input_dim, output_dim),
+        self.fc1 = nn.Sequential(nn.Linear(input_dim, output_dim, bias=False),
                                  nn.BatchNorm1d(running_elems))
 
-        self.fc2 = nn.Sequential(nn.Linear(output_dim, output_dim),
+        self.fc2 = nn.Sequential(nn.Linear(output_dim, output_dim, bias=False),
                                  nn.BatchNorm1d(running_elems))
 
         self.relu = nn.ReLU()
@@ -318,3 +362,12 @@ class ResNet(nn.Module):
         out = self.layer2(out)
         out = self.fc_out(out)
         return out
+
+
+if __name__ == "__main__":
+    net = MLP(input_dim=2,
+              output_dim=1,
+              hidden_size=50,
+              num_layers=1,
+              batch_norm=False,
+              activation="sigmoid")
